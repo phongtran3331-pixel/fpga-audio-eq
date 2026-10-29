@@ -58,6 +58,7 @@ rev = np.array([int(format(i, '010b')[::-1], 2) for i in range(N)])
 mag = mag_br[rev]  # 现在 mag[k] = 自然序 bin k 的幅值
 
 top = sorted(np.argsort(mag)[-8:].tolist())
+big2 = sorted(np.argsort(mag)[-2:].tolist())  # 幅值最大的两个 bin（按 bin 编号排序）
 print('MODE %s top bins (自然序): %s' % (mode, top))
 print('MODE %s top vals: %s' % (mode, [int(mag[i]) for i in top]))
 print('MODE %s mag[100]=%.0f mag[924]=%.0f argmax=%d' % (mode, mag[100], mag[924], int(np.argmax(mag))))
@@ -66,6 +67,6 @@ if mode == 'A':
     ok = (int(np.argmax(mag)) == 100) and (mag[924] < mag[100] / 5)
     print('MODE A 预期: 单峰在100(约13106), 924≈0 ->', 'PASS' if ok else 'FAIL')
 else:
-    ok = (sorted(top[-2:]) == [100, 924]) and (abs(mag[100] - mag[924]) < 0.3 * max(mag[100], mag[924]))
+    ok = (big2 == [100, 924]) and (abs(mag[100] - mag[924]) < 0.3 * max(mag[100], mag[924]))
     print('MODE B 预期: 100和924双峰(各约6553) ->', 'PASS' if ok else 'FAIL')
 print('FFT_CHECK_%s_DONE' % mode)
