@@ -94,9 +94,15 @@ def ola_reconstruct(Y):
 
 
 def main():
-    n = np.arange(SR)   # 1 秒双音信号
-    x = (0.35 * 32767 * (np.sin(2 * np.pi * 300 * n / SR)
-                         + np.sin(2 * np.pi * 3000 * n / SR))).astype(np.int64)
+    if len(sys.argv) > 1:
+        # 真实素材模式：PC 端经 base64 传来的 int16 LE 单声道 48k PCM
+        x = np.fromfile(sys.argv[1], dtype='<i2').astype(np.int64)
+        print('[board] 输入: %s (%d 点, %.2f s)' % (sys.argv[1], len(x), len(x) / SR))
+    else:
+        # 合成双音测试模式
+        n = np.arange(SR)
+        x = (0.35 * 32767 * (np.sin(2 * np.pi * 300 * n / SR)
+                             + np.sin(2 * np.pi * 3000 * n / SR))).astype(np.int64)
 
     ol = Overlay(BIT)
     dma = ol.axi_dma_0

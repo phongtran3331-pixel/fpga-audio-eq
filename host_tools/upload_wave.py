@@ -8,6 +8,7 @@ import time
 import serial
 
 COM = sys.argv[1] if len(sys.argv) > 1 else 'COM6'
+BAUD = int(sys.argv[2]) if len(sys.argv) > 2 else 115200
 SRC = os.path.join(os.path.dirname(__file__), '..', 'pynq', 'wave_send.py')
 
 
@@ -44,7 +45,7 @@ def main():
     b64 = base64.b64encode(data).decode()
     print('待上传 wave_send.py: %d 字节 (base64 %d 字符)' % (len(data), len(b64)))
 
-    ser = serial.Serial(COM, 460800, timeout=1)   # 上次运行已把板端 ttyPS0 提速到 460800
+    ser = serial.Serial(COM, BAUD, timeout=1)
     print('等待 shell ...')
     if not ensure_shell(ser):
         print('失败: 无法进入板端 shell')
