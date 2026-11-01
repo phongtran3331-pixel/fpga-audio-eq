@@ -388,9 +388,10 @@ def show(sr, d_orig, d_filt, tag, save_only=False):
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     ap.add_argument('--com', default='COM6', help='串口号，默认 COM6')
-    ap.add_argument('--mp3', default=None, help='MP3 文件路径；不传则退回板端合成双音')
-    ap.add_argument('--seconds', type=float, default=4.0, help='截取长度(秒)，默认 4')
-    ap.add_argument('--start', type=float, default=0.0, help='截取起点(秒)，默认 0')
+    ap.add_argument('--mp3', default=r'D:\KimiData\kimi\workspace\ruixinpage\app\music\《菊花台》- 周杰伦.mp3',
+                    help='MP3 文件路径；不传则退回板端合成双音')
+    ap.add_argument('--seconds', type=float, default=10.0, help='截取长度(秒)，默认 10')
+    ap.add_argument('--start', type=float, default=10.0, help='截取起点(秒)，默认 10')
     ap.add_argument('--baud', type=int, default=921600, help='传输波特率，默认 921600')
     ap.add_argument('--save-only', action='store_true',
                     help='只保存 PNG 不弹窗（适合无人值守/录素材）')
