@@ -164,7 +164,8 @@ def parse_wave_stream(ser):
     """协议: WAVE_BEGIN <sr> <n1> <n2> B64 \\n | base64 数据行 | WAVE_END"""
     rx = Rx(ser)
     while True:
-        line = rx.read_line()
+        # 板端处理耗时与片段长度成正比（约 20 s/秒音频），这里给足 15 分钟
+        line = rx.read_line(timeout=900)
         if line.startswith(MAGIC_BEGIN):
             break
         print('[板端]', line.decode('utf-8', 'replace'))
@@ -390,7 +391,7 @@ if __name__ == '__main__':
     ap.add_argument('--com', default='COM6', help='串口号，默认 COM6')
     ap.add_argument('--mp3', default=r'D:\KimiData\kimi\workspace\ruixinpage\app\music\《菊花台》- 周杰伦.mp3',
                     help='MP3 文件路径；不传则退回板端合成双音')
-    ap.add_argument('--seconds', type=float, default=10.0, help='截取长度(秒)，默认 10')
+    ap.add_argument('--seconds', type=float, default=5.0, help='截取长度(秒)，默认 10')
     ap.add_argument('--start', type=float, default=10.0, help='截取起点(秒)，默认 10')
     ap.add_argument('--baud', type=int, default=921600, help='传输波特率，默认 921600')
     ap.add_argument('--save-only', action='store_true',
