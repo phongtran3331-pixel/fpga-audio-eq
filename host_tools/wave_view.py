@@ -3,6 +3,8 @@
 # 用法（电脑上）：
 #   pip install pyserial matplotlib numpy miniaudio sounddevice   # sounddevice 可选
 #   python wave_view.py --com COM6 --mp3 某首歌.mp3 [--seconds 4] [--start 10]
+# 本机实测示例（周杰伦《菊花台》）：
+#   python wave_view.py --com COM6 --mp3 "D:\KimiData\kimi\workspace\ruixinpage\app\music\《菊花台》- 周杰伦.mp3" --start 10 --seconds 3
 # 不带 --mp3 时退回板端合成双音模式（无需上传）
 import argparse
 import base64
@@ -262,6 +264,7 @@ def show(sr, d_orig, d_filt, tag, save_only=False):
     ax2.set_xlim(0, WIN)
 
     # 缩略图: 两路波形叠加 + 当前窗口位置框
+    aov.set_position([0.07, 0.015, 0.50, 0.085])
     aov.plot(t_full, d_orig, lw=0.4, color='#0b7a5c', alpha=0.65)
     aov.plot(t_full, d_filt, lw=0.4, color='#b3541e', alpha=0.65)
     aov.set_xlim(0, dur)
@@ -346,12 +349,21 @@ def show(sr, d_orig, d_filt, tag, save_only=False):
                 stop()
         fig.canvas.draw_idle()
 
-    axb1 = fig.add_axes([0.72, 0.03, 0.09, 0.045])
-    axb2 = fig.add_axes([0.82, 0.03, 0.09, 0.045])
-    axb3 = fig.add_axes([0.91, 0.03, 0.07, 0.045])
+    def reset(event=None):
+        """停止播放，播放头与视窗都回到 0 s"""
+        stop()
+        state['pos'] = 0
+        set_window(0.0)
+
+    axb0 = fig.add_axes([0.60, 0.03, 0.075, 0.045])
+    axb1 = fig.add_axes([0.685, 0.03, 0.085, 0.045])
+    axb2 = fig.add_axes([0.78, 0.03, 0.085, 0.045])
+    axb3 = fig.add_axes([0.875, 0.03, 0.095, 0.045])
+    b0 = Button(axb0, '复位')
     b1 = Button(axb1, '播放原声')
     b2 = Button(axb2, '播放滤波')
     b3 = Button(axb3, '停止')
+    b0.on_clicked(reset)
     b1.on_clicked(lambda e: play('orig', offset=state['pos'] / sr))
     b2.on_clicked(lambda e: play('filt', offset=state['pos'] / sr))
     b3.on_clicked(lambda e: stop())
