@@ -1,8 +1,9 @@
 # PC 端：经串口线接收板端 wave_send.py 发来的两路波形，可交互显示与播放
 # 用法（电脑上）：
 #   pip install pyserial matplotlib numpy sounddevice   # sounddevice 可选，用于播放
-#   python wave_view.py --com COM8
+#   python wave_view.py --com COM4
 import argparse
+import os
 import struct
 import sys
 import time
@@ -40,26 +41,55 @@ def read_exact(ser, n, timeout=120):
 
 
 def parse_wave_stream(ser):
-    """协议: WAVE_BEGIN <sr> <n1> <n2> \\n | n1*2 字节原波 int16 LE | n2*2 字节滤波 int16 LE | WAVE_END"""
+    """协议: WAVE_BEGIN <sr> <n1> <n2> B64 \\n | base64(n1*2 + n2*2 字节 int16 LE) \\n | WAVE_END
+    （数据走 base64 文本，避免 tty 烹调模式破坏二进制）"""
+    import base64
     while True:
         line = read_line(ser)
         if line.startswith(MAGIC_BEGIN):
             break
         print('[板端]', line.decode('utf-8', 'replace'))
-    _, sr, n1, n2 = line.split()
+    parts = line.split()
+    _, sr, n1, n2 = parts[:4]
     sr, n1, n2 = int(sr), int(n1), int(n2)
-    d_orig = np.frombuffer(read_exact(ser, n1 * 2), dtype='<i2')
-    d_filt = np.frombuffer(read_exact(ser, n2 * 2), dtype='<i2')
+    b64 = read_line(ser, timeout=120)
+    raw = base64.b64decode(b64)
+    expect = (n1 + n2) * 2
+    if len(raw) != expect:
+        raise ValueError('base64 解码长度异常: %d != %d' % (len(raw), expect))
+    alld = np.frombuffer(raw, dtype='<i2')
+    d_orig, d_filt = alld[:n1], alld[n1:]
     end = read_line(ser, timeout=30)
     if MAGIC_END not in end:
         print('[warn] 结束标记异常:', end)
     return sr, d_orig.astype(float), d_filt.astype(float)
 
 
-def run(com):
+def clean_shell(ser, tries=12):
+    """把板端 shell 清回干净的提示符：Ctrl-C 中断残留进程 + 回车，
+    直到看到 xilinx@pynq 提示符且再无新数据（上次中断留下的二进制残数据
+    会在这一步被全部倒出来丢掉）。"""
+    for i in range(tries):
+        ser.write(b'\x03\r')
+        time.sleep(0.6)
+        junk = ser.read(ser.in_waiting or 1)
+        if b'xilinx@pynq' in junk and not ser.in_waiting:
+            # 再多等一拍确认没有后续残数据
+            time.sleep(0.4)
+            tail = ser.read(ser.in_waiting or 1)
+            if b'xilinx@pynq' in tail or tail == b'':
+                return True
+    return False
+
+
+def run(com, save_only=False):
     print('1/4 打开串口 %s @115200' % com)
     ser = serial.Serial(com, 115200, timeout=1)
     time.sleep(0.3)
+    ser.reset_input_buffer()
+    print('  清理板端残留状态 ...')
+    if not clean_shell(ser):
+        print('  [warn] shell 清理未完全确认，继续执行')
 
     print('2/4 提升板端波特率到 460800 ...')
     ser.write(b'stty -F /dev/ttyPS0 460800\r')
@@ -67,23 +97,33 @@ def run(com):
     ser.close()
     ser = serial.Serial(com, 460800, timeout=1)
     time.sleep(0.2)
-
-    print('3/4 启动板端 wave_send.py（sudo 密码自动发送 xilinx）...')
     ser.reset_input_buffer()
-    ser.write(b'sudo python3 /home/xilinx/wave_send.py\r')
-    time.sleep(1.5)
+    clean_shell(ser)   # 提速后再确认一次，丢光切换波特率时涌出的残数据
+
+    print('3/4 启动板端 wave_send.py（sudo -E 保留环境，密码自动发送 xilinx）...')
+    ser.reset_input_buffer()
+    ser.write(b'sudo -E python3 /home/xilinx/wave_send.py\r')
+    time.sleep(1.0)
     ser.write(b'xilinx\r')
 
     print('4/4 接收波形数据（约 4 秒）...')
     sr, d_orig, d_filt = parse_wave_stream(ser)
     ser.close()
     print('接收完成: %d 点 @ %d Hz, 滤波后 %d 点' % (len(d_orig), sr, len(d_filt)))
-    show(sr, d_orig, d_filt)
+    # 原始数据落盘，之后不用重连板卡也能重画
+    npz = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'wave_data.npz')
+    np.savez(npz, sr=sr, orig=d_orig, filt=d_filt)
+    print('原始数据已保存: %s' % npz)
+    show(sr, d_orig, d_filt, save_only=save_only)
 
 
-def show(sr, d_orig, d_filt):
+def show(sr, d_orig, d_filt, save_only=False):
     import matplotlib.pyplot as plt
     from matplotlib.widgets import Button
+
+    # 中文字体：托管 Python 默认 DejaVu Sans 不含 CJK，会显示成方框
+    plt.rcParams['font.sans-serif'] = ['Microsoft YaHei', 'SimHei', 'Noto Sans SC']
+    plt.rcParams['axes.unicode_minus'] = False
 
     t = np.arange(len(d_orig)) / sr
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(11, 6), sharex=True)
@@ -97,6 +137,13 @@ def show(sr, d_orig, d_filt):
     ax2.set_xlabel('时间 (s)')
     ax2.set_ylabel('幅度')
     ax2.grid(alpha=0.3)
+
+    # 无论是否有图形界面，先落盘一张 PNG，保证一定有图可看
+    png = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                       'wave_compare_%s.png' % time.strftime('%H%M%S'))
+    fig.tight_layout(rect=[0, 0.06, 1, 1])
+    fig.savefig(png, dpi=130)
+    print('波形图已保存: %s' % png)
 
     sd = None
     try:
@@ -126,15 +173,20 @@ def show(sr, d_orig, d_filt):
     b2.on_clicked(lambda e: play('filt'))
     b3.on_clicked(stop)
     plt.tight_layout(rect=[0, 0.06, 1, 1])
-    plt.show()
+    if save_only:
+        plt.close(fig)
+    else:
+        plt.show()
 
 
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
-    ap.add_argument('--com', default='COM8', help='串口号，默认 COM8')
+    ap.add_argument('--com', default='COM6', help='串口号，默认 COM6')
+    ap.add_argument('--save-only', action='store_true',
+                    help='只保存 PNG 不弹窗（适合无人值守/录素材）')
     args = ap.parse_args()
     try:
-        run(args.com)
+        run(args.com, save_only=args.save_only)
     except Exception as e:
         print('失败:', e)
         sys.exit(1)

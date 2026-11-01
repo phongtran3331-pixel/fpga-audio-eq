@@ -3,7 +3,10 @@
 # 用法（串口控制台，需 sudo）：
 #   stty -F /dev/ttyPS0 460800        # 先把串口提速（PC 端也要切到 460800）
 #   sudo python3 /home/xilinx/wave_send.py
-import sys, time
+import base64
+import sys
+import time
+
 import numpy as np
 from pynq import Overlay, allocate, MMIO
 
@@ -113,9 +116,11 @@ def main():
     x_filt = np.clip(x_filt, -32768, 32767).astype('<i2')
 
     out = sys.stdout.buffer
-    out.write(('WAVE_BEGIN %d %d %d\n' % (SR, len(x_orig), len(x_filt))).encode())
-    out.write(x_orig.tobytes())
-    out.write(x_filt.tobytes())
+    # 二进制过串口控制台会被 tty 烹调模式破坏（XON/XOFF、换行转换丢字节），
+    # 因此整段数据 base64 文本化发送，PC 端解码
+    payload = base64.b64encode(x_orig.tobytes() + x_filt.tobytes())
+    out.write(('WAVE_BEGIN %d %d %d B64\n' % (SR, len(x_orig), len(x_filt))).encode())
+    out.write(payload + b'\n')
     out.flush()
     print('WAVE_END')
 
